@@ -1,4 +1,8 @@
--- quests.lua -- quest pane (GMCP only).
+-- quests.lua -- quest pane and triggers.
+--
+-- The pane title is hardcoded as "Quests" in the layout; rune_build_layout
+-- is called to rebuild the UI tree on title changes, but the title argument is
+-- discarded (the layout function takes no parameters).
 --
 -- Viewing a quest in-game (`quest status <vnum>`) selects it -> detail view.
 -- With nothing selected (e.g. it just expired) the pane lists the quests

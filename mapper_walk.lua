@@ -3,7 +3,12 @@
 -- Sends one direction at a time and waits for the matching Room.Info before
 -- the next step, so a walk can be aborted (mapper stop) and won't desync.
 
+local style = rune.style
 local M = {}
+
+local function mp(msg)
+    return style.magenta("[mapper]") .. " " .. style.white(msg)
+end
 
 local STEP_TIMEOUT = 5
 local active = false
@@ -32,7 +37,7 @@ local function send_step()
     local dir = step.dir
     timeout_handle = rune.timer.after(STEP_TIMEOUT, function()
         timeout_handle = nil
-        rune.echo("[mapper] walk stalled on '" .. dir .. "' (no room change); stopped.")
+        rune.echo(mp("walk stalled on '" .. dir .. "' (no room change); stopped."))
         M.stop()
     end)
 end
@@ -73,15 +78,14 @@ function M.on_room(uid)
 
     if mode == "path" and uid ~= step.uid then
         -- Landed somewhere we didn't expect: abort rather than guess.
-        rune.echo("[mapper] walk interrupted at " .. uid ..
-            " (expected " .. step.uid .. "); stopped.")
+        rune.echo(mp("walk interrupted at " .. uid .. " (expected " .. step.uid .. "); stopped."))
         M.stop()
         return
     end
 
     index = index + 1
     if index > #steps then
-        rune.echo("[mapper] arrived at " .. tostring(destination or "?") .. ".")
+        rune.echo(mp("arrived at " .. tostring(destination or "?")))
         M.stop()
         return
     end

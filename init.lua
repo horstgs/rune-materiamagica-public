@@ -19,91 +19,76 @@ rune.config.set("keep_input", true)
 -- Shift+drag to select text):
 -- rune.config.set("mouse", true)
 
--- Comms pane: tell/clan/PK-talk routing, scroll binds, aliases.
--- See comms.lua.
-require("comms")
+-- Pouch of plenitude auto-looter/sorter. See autopouch.lua.
+require("autopouch")
 
--- Wound lines -> inline target health bar. See enemy.lua.
-require("enemy")
+-- Shared character name detection (required by statusbar, comms, mapper_map).
+require("charname")
 
--- HP/SP/ST prompt bar and the top character/wealth line. See stats.lua.
-require("stats")
-
--- Quest detail pane, populated by viewing a quest (`quest status <vnum>`).
--- See quests.lua.
-require("quests")
-
--- Materia Magica mapper: room DB, pathfinding, step-by-step walking.
--- See mapper.lua (map data in mapper/map.db).
 require("mapper")
 
--- Local browser map of the mapper, wired both ways (`/webmap on`).
--- See webmap.lua (server + front end in webmap/).
--- Only loaded when the webmap add-on is present: the public copy of this
--- config ships without it, so guard the require instead of erroring.
+-- ASCII map of the current area/floor, centred on you. See mapper_map.lua.
+require("mapper_map")
+
+-- Unified comms pane: tell/clan/talk/relay/form/alliance/novice/auction,
+-- with a per-channel filter. See comms.lua.
+require("comms")
+
+require("statusbar")
+
+-- Additional modules (self-contained; no UI pane of their own in this layout).
+require("sense")      -- autowalk from 'you sense that X may be located...'
+require("sign")       -- roadsign picker
+require("spdr")       -- named speedwalk destinations
+require("terrain")    -- terrain stamp in room headers
+require("timers")     -- anti-idle twiddle
+require("updater")    -- /update from the public repo
+require("panes")      -- /panes hide/show all panes
+require("quests")     -- quest pane and triggers
+require("enemy")      -- wound lines -> inline health bars
+
+-- Browser map server (webmap.lua + webmap/). Loaded only when present, so the
+-- public copy runs fine without it.
 local webmap_file = io.open((rune.config_dir or ".") .. "/webmap.lua", "r")
 if webmap_file then
     webmap_file:close()
     require("webmap")
 end
 
--- Terrain indicator in the room header. See terrain.lua.
-require("terrain")
-
--- Named speedwalk destinations (`spdr`). See spdr.lua.
-require("spdr")
-
--- Hide/show all panes at once (`/panes`). See panes.lua.
-require("panes")
-
--- Pouch of plenitude auto-looter/sorter (`autopouch`). See autopouch.lua.
-require("autopouch")
-
--- Autowalk the directions from a `sense` (`sense`). See sense.lua.
-require("sense")
-
--- Simple scheduled commands (e.g. twiddle every 5 min). See timers.lua.
-require("timers")
-
--- Pull the latest config from the public repo without git (`/update`). See
--- updater.lua.
-require("updater")
-
--- Roadsigned destinations: reading a sign pops a picker that runs to the
--- chosen place. See sign.lua.
-require("sign")
-
--- Layout ---------------------------------------------------------------------
--- The top-level UI tree lives here, with the config it describes.
+-- Layout: MM output 80 cols on the left; on the right a column holding comms
+-- on top and a row below with the map pane (33 wide) and the quests pane
+-- filling the remaining space.
 --
--- Panes have no runtime title setter, so changing a title means re-declaring
--- the layout: stats/quests/comms call rune_build_layout(...) again when their
--- title changes. Hidden pane states are read back and preserved across that.
+-- The map is pinned to 33 wide by an inner column; a row's children get widths
+-- instead of heights, so the column pins the pane. If you change 33 here, also
+-- change WIDTH in mapper_map.lua to 31 (33 minus the two border cells).
 --
--- The top line is the character/wealth bar; below it the output and the
--- comms/quests sidebar. Panes have no runtime title setter, so quests/comms
--- re-declare the layout when their title changes; hidden pane states are
--- preserved across that.
-function rune_build_layout(quests_title, comms_title)
-    comms_title = comms_title or rune.comms_title or "Comms"
+-- Panes have no runtime title setter, so comms calls rune_build_layout again
+-- when the filter changes, and mapper_map does the same when the map's area
+-- or zoom changes. That function reads rune.comms_title and rune.map_title,
+-- which those modules set. Anything else here should stay stable across
+-- those re-declarations.
+function rune_build_layout()
     rune.ui.layout({
         type = "column",
         children = {
-            { type = "bar", name = "worth" },
             { type = "row", size = "1fr", children = {
-                { type = "pane", name = "output", size = "1fr",
-                  border = "none" },
-                { type = "column", size = "38%", children = {
-                    { type = "pane", name = "comms", size = "50%",
-                      border = "full", title = comms_title,
+                { type = "pane", name = "output", size = 80, border = "none" },
+                { type = "column", size = "1fr", children = {
+                    { type = "pane", name = "comms", size = 10, border = "full",
+                      title = rune.comms_title or "Comms",
                       hidden = rune.pane.is_hidden("comms") or false },
-                    -- explicit 1-row gap so the panes read as separate boxes
-                    { type = "pane", name = "pad_gap", size = 1, border = "none" },
-                    { type = "pane", name = "quests", size = "1fr",
-                      border = "full", title = quests_title or "Quests",
-                      hidden = rune.pane.is_hidden("quests") or false },
-                    -- 1-row bottom margin before the input line
-                    { type = "pane", name = "pad_b", size = 1, border = "none" },
+                    { type = "row", size = "1fr", children = {
+                        { type = "column", size = 33, children = {
+                            { type = "pane", name = "map", size = "1fr", border = "full",
+                              title = rune.map_title or "Map",
+                              hidden = rune.map_hidden == true
+                                  or rune.pane.is_hidden("map") or false },
+                        }},
+                        { type = "pane", name = "quests", size = "1fr", border = "full",
+                          title = "Quests",
+                          hidden = rune.pane.is_hidden("quests") or false },
+                    }},
                 }},
             }},
             { type = "input" },
@@ -112,4 +97,4 @@ function rune_build_layout(quests_title, comms_title)
     })
 end
 
-rune_build_layout(rune.store.get("quest_title"))
+rune_build_layout()

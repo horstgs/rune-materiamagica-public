@@ -14,6 +14,10 @@
 local H = require("helpstyle")
 local style = rune.style
 
+local function ap(msg)
+    return style.magenta("[autopouch]") .. " " .. style.white(msg)
+end
+
 -- Recipes --------------------------------------------------------------------
 
 local RECIPES_PATH = (rune.config_dir or ".") .. "/cook/recipes.json"
@@ -24,14 +28,14 @@ local recipe_names = {}     -- sorted names
 local function load_recipes()
     local f = io.open(RECIPES_PATH, "r")
     if not f then
-        rune.echo("[autopouch] cannot read " .. RECIPES_PATH)
+        rune.echo(ap("cannot read " .. RECIPES_PATH))
         return
     end
     local text = f:read("*a")
     f:close()
     local ok, data = pcall(rune.json.decode, text)
     if not ok or type(data) ~= "table" or type(data.recipes) ~= "table" then
-        rune.echo("[autopouch] bad recipes JSON in " .. RECIPES_PATH)
+        rune.echo(ap("bad recipes JSON in " .. RECIPES_PATH))
         return
     end
     for _, r in ipairs(data.recipes) do
@@ -182,7 +186,7 @@ finish = function()
         if needed[e.item:lower()] then
             if cont then
                 if e.item:find("'") then
-                    rune.echo("[autopouch] skipped (quote in name): " .. e.item)
+                    rune.echo(ap("skipped (quote in name): " .. e.item))
                 else
                     rune.send("put all.'" .. e.item .. "' " .. cont)
                     kept = kept + 1
@@ -193,8 +197,8 @@ finish = function()
         end
     end
     if missing then
-        rune.echo("[autopouch] no container set; needed items not sorted "
-            .. "(autopouch container <keyword>)")
+        rune.echo(ap("no container set; needed items not sorted "
+            .. "(autopouch container <keyword>)"))
     end
 
     -- Clear the leftovers so the pouch can replenish.
@@ -205,19 +209,18 @@ finish = function()
     rune.send("drop all.wine")
     rune.send("close plenitude")
 
-    rune.echo(style.green(string.format("[autopouch] done - kept %d of %d",
-        kept, total)))
+    rune.echo(style.green("[autopouch] " .. string.format("done - kept %d of %d", kept, total)))
 end
 
 local function run_loop()
     if busy then
-        rune.echo("[autopouch] already running")
+        rune.echo(ap("already running"))
         return
     end
     busy = true
     collect = {}
     total = 0
-    rune.echo("[autopouch] open + take all plenitude")
+    rune.echo(ap("open + take all plenitude"))
     rune.send("open plenitude")
     rune.send("take all plenitude")
     -- Flush on the first take line's quiet gap (schedule_flush); if the pouch
@@ -290,7 +293,7 @@ local function open_daily_picker()
             daily = val
             save_daily()
             rebuild_needed()
-            rune.echo("[autopouch] daily = " .. val)
+            rune.echo(ap("daily = " .. val))
         end,
     })
 end
@@ -301,9 +304,9 @@ local function list_selected()
         if selected[name] then out[#out + 1] = name end
     end
     if #out == 0 then
-        rune.echo("[autopouch] no recipes selected")
+        rune.echo(ap("no recipes selected"))
     else
-        rune.echo("[autopouch] selected: " .. table.concat(out, ", "))
+        rune.echo(ap("selected: " .. table.concat(out, ", ")))
     end
 end
 
@@ -312,9 +315,9 @@ local function list_needs()
     for key in pairs(needed) do out[#out + 1] = key end
     table.sort(out)
     if #out == 0 then
-        rune.echo("[autopouch] nothing needed")
+        rune.echo(ap("nothing needed"))
     else
-        rune.echo("[autopouch] keeping " .. #out .. ": " .. table.concat(out, ", "))
+        rune.echo(ap("keeping " .. #out .. ": " .. table.concat(out, ", ")))
     end
 end
 
@@ -349,10 +352,10 @@ rune.alias.regex("^autopouch +(now|on|off|pick|list|needs|clear|daily)$", functi
         run_loop()
     elseif cmd == "on" then
         rune.store.set("autopouch.enabled", true)
-        rune.echo("[autopouch] auto on")
+        rune.echo(ap("auto on"))
     elseif cmd == "off" then
         rune.store.set("autopouch.enabled", false)
-        rune.echo("[autopouch] auto off")
+        rune.echo(ap("auto off"))
     elseif cmd == "pick" then
         open_picker()
     elseif cmd == "list" then
@@ -363,7 +366,7 @@ rune.alias.regex("^autopouch +(now|on|off|pick|list|needs|clear|daily)$", functi
         selected = {}
         save_selection()
         rebuild_needed()
-        rune.echo("[autopouch] cleared")
+        rune.echo(ap("cleared"))
     elseif cmd == "daily" then
         open_daily_picker()
     end
@@ -373,31 +376,31 @@ rune.alias.regex("^autopouch +daily +clear$", function()
     daily = nil
     save_daily()
     rebuild_needed()
-    rune.echo("[autopouch] daily cleared")
+    rune.echo(ap("daily cleared"))
 end, { name = "autopouch-daily-clear" })
 
 rune.alias.regex("^autopouch +(container|add|del) +(.+)$", function(m)
     local cmd, arg = m[1], m[2]
     if cmd == "container" then
         rune.store.set("autopouch.container", arg)
-        rune.echo("[autopouch] container = " .. arg)
+        rune.echo(ap("container = " .. arg))
     elseif cmd == "add" then
         if recipes[arg] then
             selected[arg] = true
             save_selection()
             rebuild_needed()
-            rune.echo("[autopouch] added " .. arg)
+            rune.echo(ap("added " .. arg))
         else
-            rune.echo("[autopouch] no such recipe: " .. arg)
+            rune.echo(ap("no such recipe: " .. arg))
         end
     elseif cmd == "del" then
         if selected[arg] then
             selected[arg] = nil
             save_selection()
             rebuild_needed()
-            rune.echo("[autopouch] removed " .. arg)
+            rune.echo(ap("removed " .. arg))
         else
-            rune.echo("[autopouch] not selected: " .. arg)
+            rune.echo(ap("not selected: " .. arg))
         end
     end
 end, { name = "autopouch-arg" })

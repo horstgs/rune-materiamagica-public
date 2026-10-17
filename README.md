@@ -12,8 +12,7 @@ It runs in your terminal and is customized with little scripts written in Lua.
 
 This repo is my collection of those scripts. Together they turn the plain
 text game into something much friendlier: a map of every room you explore,
-health bars, a quest tracker, a chat sidebar, and a bunch of autopilot
-helpers.
+health bars, a chat sidebar, and a bunch of autopilot helpers.
 
 Nothing here is required to play — it's all quality-of-life stuff I built up
 over time.
@@ -41,10 +40,10 @@ never touched.
 ## What you get
 
 **The screen layout** (`init.lua`, `panes.lua`)
-A top bar with your character name, level, gold on hand, bank balance, quest
-points, and practices. Below that: the game output, a chat sidebar, and a
-quest sidebar. `/panes` hides the sidebars when you want a clean full-width
-view (handy for copying text).
+The game output runs 80 columns wide on the left. On the right: a chat pane
+above a row holding the live ASCII map of the current area/floor on the left
+and your quest tracker on the right. The status bar at the bottom shows your
+character name and level. `/panes` hides all panes for a clean full-width view.
 
 **Auto-mapper** (`mapper.lua`, `mapper_store.lua`, `mapper_graph.lua`,
 `mapper_walk.lua`)
@@ -56,6 +55,13 @@ Builds a map of every room you visit and saves it (`mapper/map.db`). Then:
 - Tag death-trap rooms so the pathfinder routes around them
 - Walks go one step at a time and wait for the game to confirm each move, so
   they never get lost or desynced. `mapper stop` bails out anytime.
+
+**Live map pane** (`mapper_map.lua`)
+A live ASCII map of the current area centred on you, drawn from the exit graph
+(not room coordinates, which are unreliable). Commands:
+- `mapper map` — redraw and report
+- `mapper map show | hide | refresh` — toggle or force redraw
+- `ctrl+alt+m` — toggle the map pane
 
 **Speedwalk shortcuts** (`spdr.lua`)
 Type `spdr <shortcut>` (like `spdr bank`) to walk to a saved destination.
@@ -71,11 +77,6 @@ points; choose one and it runs you there over MM's roadsign network.
 When the game tells you "You sense that X may be located n, n, e…", it just
 walks there for you. `sense off` turns that off.
 
-**Quest tracker** (`quests.lua`)
-A sidebar that lists your active quests with checklists of each phase and
-countdown timers. Viewing a quest in-game (`quest status <number>`) pulls up
-its details automatically.
-
 **Chat sidebar** (`comms.lua`)
 Collects tells, clan chat, PK talk channels, relay, formation tells,
 alliance chat, novice clan, and auction into one pane so they don't
@@ -83,22 +84,23 @@ scroll away in the main output. Filter with `comms tell`, `comms clan`,
 `comms talk`, `comms relay`, `comms form`, `comms ally`, `comms novice`,
 `comms auction`, or `comms all`. Scroll it with `ctrl+alt+pgup` /
 `ctrl+alt+pgdn`. History survives restarts and is keyed per character.
-`comms debug` and `comms name` for troubleshooting.
+`comms name` shows the GMCP character name.
 
-**Health bars** (`stats.lua`, `enemy.lua`)
-- The prompt bar is off by default; `promptbar on` turns your
-  `<1234hp 567sp 890st>` prompt into a color bar (green/yellow/red HP bar, blue
-  SP bar, yellow ST bar).
-- Monsters' wound descriptions ("has some very significant wounds…") become
-  inline health bars with a percentage, so you can see exactly how hurt
-  something is.
+**Health bars** (`enemy.lua`)
+Monsters' wound descriptions ("has some very significant wounds…") become
+inline health bars with a percentage, so you can see exactly how hurt
+something is.
+
+**Quest tracker** (`quests.lua`)
+Lists your active quests with checklists of each phase and countdown timers.
+Viewing a quest in-game (`quest status <number>`) pulls up its details
+automatically. The pane can be toggled with `quests hide` / `quests show`.
 
 **Auto-pouch** (`autopouch.lua`, `cook/recipes.json`)
 The Pouch of Plenitude spits out random cooking ingredients. This empties it
-automatically, keeps the ingredients for the recipes you've picked (53 recipes
-included — bagels, borracho, and the rest), and drops the junk. `autopouch
-pick` opens a checkbox list of recipes; `autopouch daily` picks one extra item
-to keep for the daily quest.
+automatically, keeps the ingredients for the recipes you've picked, and drops
+the junk. `autopouch pick` opens a checkbox list of recipes; `autopouch daily`
+picks one extra item to keep for the daily quest.
 
 **Terrain in room headers** (`terrain.lua`)
 Stamps the room's terrain (diggable, sheltered, underwater…) right into the
@@ -115,8 +117,9 @@ Sends `twiddle` every 5 minutes so you don't get logged out for idling.
 | Where am I | `mapper where` |
 | Stop walking | `mapper stop` / `sense stop` |
 | Signpost travel | look at a sign; pick a destination |
-| Quest sidebar | automatic; `quests hide` to hide |
 | Chat filter | `comms tell` / `comms clan` / `comms all` … |
+| Map pane | `mapper map`, `ctrl+alt+m` |
+| Quest pane | `quests show` / `quests hide` |
 | Hide sidebars | `/panes` |
 | Pick cooking recipes | `autopouch pick` |
 | Empty the pouch now | `autopouch now` |

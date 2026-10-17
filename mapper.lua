@@ -9,14 +9,23 @@ local store = require("mapper_store")
 local graph = require("mapper_graph")
 local walk = require("mapper_walk")
 local H = require("helpstyle")
+local style = rune.style
 
 local MAX_MATCHES = 1000
 
+local function mp(msg)
+    return style.magenta("[mapper]") .. " " .. style.white(msg)
+end
+
+local function mps(sub, msg)
+    return style.magenta("[mapper " .. sub .. "]") .. " " .. style.white(msg)
+end
+
 local ok, info = store.load()
 if ok then
-    rune.dbg("[mapper] loaded " .. tostring(info))
+    rune.dbg(mp("loaded " .. tostring(info)))
 else
-    rune.echo("[mapper] " .. tostring(info))
+    rune.echo(mp(tostring(info)))
 end
 
 -- GMCP Room feed -------------------------------------------------------------
@@ -28,7 +37,7 @@ rune.gmcp.on("Room.Info", function(data)
     if r then
         walk.on_room(r.uid)
         if rune.store.get("mapper.announce") == true then
-            rune.echo(string.format("[%s] %s", r.uid, r.name or "?"))
+            rune.echo(style.magenta("[") .. style.white(r.uid) .. style.magenta("]") .. " " .. style.white(r.name or "?"))
         end
     end
 end, { name = "mapper-room-info" })
@@ -36,23 +45,28 @@ end, { name = "mapper-room-info" })
 local function echo_here()
     local uid = store.position and store.position.uid
     if not uid then
-        rune.echo("[mapper] no room yet.")
+        rune.echo(mp("no room yet."))
         return
     end
     local r = store.get(uid)
-    rune.echo(string.format("[mapper] room %s - %s @ %s",
-        uid, (r and r.name) or "?", (r and r.area) or "?"))
+    rune.echo(mp("room " .. uid .. " - " .. ((r and r.name) or "?") .. " @ " .. ((r and r.area) or "?")))
 end
 
--- Persist periodically and on disconnect. Saving rewrites the chunk files,
--- so this is infrequent; tags/bookmarks also save via `mapper save`.
-rune.timer.every(300, function()
+-- Persist periodically and on disconnect. Saving rewrites the whole map file,
+-- so the periodic save is infrequent. Tags and bookmarks are written straight
+-- away regardless: they are deliberate edits, and waiting up to five minutes
+-- meant a /reload -- or the other client saving its own copy -- lost them.
+local function persist()
     if store.dirty then store.save() end
-end, { name = "mapper-autosave" })
+end
 
-rune.hooks.on("disconnected", function()
-    if store.dirty then store.save() end
-end, { name = "mapper-save-disconnect" })
+rune.timer.every(300, persist, { name = "mapper-autosave" })
+
+rune.hooks.on("disconnected", persist, { name = "mapper-save-disconnect" })
+
+-- Fired before the Lua state is torn down, so anything unsaved (tags,
+-- bookmarks, rooms visited since the last write) survives a /reload.
+rune.hooks.on("reloading", persist, { name = "mapper-save-reloading" })
 
 -- Helpers --------------------------------------------------------------------
 
@@ -91,7 +105,7 @@ end
 
 local function map_path(from_uid, to_uid)
     if not store.get(from_uid) or not store.get(to_uid) then
-        rune.echo("[mapper path] unknown room.")
+        rune.echo(mps("path", "unknown room."))
         return
     end
     local matches, exhausted = graph.find_paths(from_uid, function(uid)
@@ -100,18 +114,18 @@ local function map_path(from_uid, to_uid)
     end)
     local data = matches[tostring(to_uid)]
     if data then
-        rune.echo("[mapper path] " .. from_uid .. " -> " .. to_uid .. ": " .. graph.build_speedwalk(data.path))
+        rune.echo(mps("path", from_uid .. " -> " .. to_uid .. ": " .. graph.build_speedwalk(data.path)))
     else
         local hint = exhausted and " (depth limit hit; try 'mapper depth inf')" or ""
-        rune.echo("[mapper path] no path from " .. from_uid .. " to " .. to_uid .. hint)
+        rune.echo(mps("path", "no path from " .. from_uid .. " to " .. to_uid .. hint))
     end
 end
 
 local function start_walk_to(dest)
     local from = cur_uid()
-    if not from then rune.echo("[mapper] I don't know where you are."); return end
+    if not from then rune.echo(mp("I don't know where you are.")); return end
     if not store.get(dest) then
-        rune.echo("[mapper] destination " .. dest .. " not in database.")
+        rune.echo(mp("destination " .. dest .. " not in database."))
         return
     end
     local matches, exhausted = graph.find_paths(from, function(uid)
@@ -121,17 +135,17 @@ local function start_walk_to(dest)
     local data = matches[tostring(dest)]
     if not data then
         local hint = exhausted and " (depth limit hit; try 'mapper depth inf')" or ""
-        rune.echo("[mapper] no path found to " .. dest .. hint)
+        rune.echo(mp("no path found to " .. dest .. hint))
         return
     end
     if #data.path == 0 then
-        rune.echo("[mapper goto] " .. dest .. " (already here)")
+        rune.echo(mps("goto", dest .. " (already here)"))
         return
     end
     local sw = graph.build_speedwalk(data.path)
-    rune.echo("[mapper goto] " .. dest .. " (" .. #data.path .. " steps): " .. sw)
+    rune.echo(mps("goto", dest .. " (" .. #data.path .. " steps): " .. sw))
     if rune.store.get("mapper.enable_speedwalk_sends") == false then
-        rune.echo("[mapper goto] (sends disabled; `mapper sends on` to enable)")
+        rune.echo(mps("goto", "(sends disabled; `mapper sends on` to enable)"))
         return
     end
     walk.start(data.path, tostring(dest))
@@ -140,9 +154,9 @@ end
 local function map_roominfo(uid)
     if uid == "" then uid = nil end
     uid = uid and tostring(uid) or cur_uid()
-    if not uid then rune.echo("[mapper] no room and no known position."); return end
+    if not uid then rune.echo(mp("no room and no known position.")); return end
     local r = store.get(uid)
-    if not r then rune.echo("[mapper] room " .. uid .. " not in database."); return end
+    if not r then rune.echo(mp("room " .. uid .. " not in database.")); return end
     rune.echo("Room " .. uid .. ":")
     rune.echo("  name:    " .. tostring(r.name))
     rune.echo("  area:    " .. tostring(r.area or "?"))
@@ -161,7 +175,7 @@ end
 
 local function map_adjacent(name)
     local uid = cur_uid()
-    if not uid or not store.get(uid) then rune.echo("[mapper] I don't know where you are."); return end
+    if not uid or not store.get(uid) then rune.echo(mp("I don't know where you are.")); return end
     local my_name = store.get(uid).name
     rune.echo("Adjacent rooms (name != '" .. tostring(my_name) .. "'):")
     local count = 0
@@ -192,7 +206,7 @@ end
 -- Nearby rooms matching a tag or a flag substring; nearest-first picker.
 local function map_list_nearby(tag, label, flagpat)
     local from = cur_uid()
-    if not from then rune.echo("[mapper] I don't know where you are."); return end
+    if not from then rune.echo(mp("I don't know where you are.")); return end
     local matches = graph.find_paths(from, function(uid, room)
         if store.has_tag(room, tag) then return tag end
         if flagpat and room and room.flags then
@@ -212,7 +226,7 @@ local function map_list_nearby(tag, label, flagpat)
         return tostring(a.uid) < tostring(b.uid)
     end)
     if #list == 0 then
-        rune.echo("[mapper] no " .. label .. " found (visited/tagged rooms only)")
+        rune.echo(mp("no " .. label .. " found (visited/tagged rooms only)"))
         return
     end
     if #list == 1 then
@@ -240,22 +254,23 @@ local function tag_target(tag, id, on)
     if id == "" then id = nil end
     local uid = id or cur_uid()
     if not uid then
-        rune.echo("[mapper] I don't know where you are.")
+        rune.echo(mp("I don't know where you are."))
         return
     end
     local room = store.get(uid)
     if not room then
-        rune.echo("[mapper] room " .. uid .. " is not in the map.")
+        rune.echo(mp("room " .. uid .. " is not in the map."))
         return
     end
     local had = store.has_tag(room, tag)
     store.set_tag(uid, tag, on)
+    persist()
     if on then
-        rune.echo("[mapper] tagged " .. uid .. " as " .. tag)
+        rune.echo(mp("tagged " .. uid .. " as " .. tag))
     elseif had then
-        rune.echo("[mapper] removed tag '" .. tag .. "' from " .. uid)
+        rune.echo(mp("removed tag '" .. tag .. "' from " .. uid))
     else
-        rune.echo("[mapper] no '" .. tag .. "' tag on " .. uid)
+        rune.echo(mp("no '" .. tag .. "' tag on " .. uid))
     end
 end
 
@@ -279,7 +294,7 @@ end
 -- clickable room numbers.
 local function show_matches(matches, title)
     if #matches == 0 then
-        rune.echo("[mapper] no matching rooms")
+        rune.echo(mp("no matching rooms"))
         return
     end
     if #matches == 1 then
@@ -309,10 +324,10 @@ end
 
 rune.alias.regex("^mapper[ ]+nearby[ ]+(.+)$", function(m)
     local list, err = find_nearby(m[1])
-    if not list then rune.echo("[mapper nearby] " .. err); return end
+    if not list then rune.echo(mps("nearby", err)); return end
     if #list == 0 then
-        rune.echo("[mapper nearby] no nearby matches in " ..
-            tostring(store.position and store.position.area or "?"))
+        rune.echo(mps("nearby", "no nearby matches in " ..
+            tostring(store.position and store.position.area or "?")))
         return
     end
     if #list == 1 then
@@ -341,7 +356,7 @@ rune.alias.regex("^mapper[ ]+where[ ]+(.+)$", function(m)
     if not name then name = arg end
     name = name:gsub("^%s+", ""):gsub("%s+$", "")
     if name == "" then
-        rune.echo("[mapper] where: a room name is required")
+        rune.echo(mp("Where: a room name is required"))
         return
     end
     show_matches(search_by_name(name, area), "Where")
@@ -349,7 +364,7 @@ end, { name = "mapper-where" })
 
 rune.alias.regex("^mapper[ ]+path[ ]+([0-9A-Fa-f]+)$", function(m)
     local from = cur_uid()
-    if not from then rune.echo("[mapper] I don't know where you are."); return end
+    if not from then rune.echo(mp("I don't know where you are.")); return end
     map_path(from, m[1])
 end, { name = "mapper-path" })
 
@@ -368,13 +383,13 @@ end, { name = "mapper-goto" })
 
 rune.alias.regex("^mapper[ ]+stop$", function()
     walk.stop()
-    rune.echo("[mapper] stopped.")
+    rune.echo(mp("stopped."))
 end, { name = "mapper-stop" })
 
 rune.alias.regex("^mapper[ ]+resume$", function()
     local dest = walk.get_destination()
-    if not dest then rune.echo("[mapper] nothing to resume."); return end
-    rune.echo("[mapper] resuming to " .. dest .. " (" .. walk.remaining_count() .. " steps left)")
+    if not dest then rune.echo(mp("nothing to resume.")); return end
+    rune.echo(mp("resuming to " .. dest .. " (" .. walk.remaining_count() .. " steps left)"))
     start_walk_to(dest)
 end, { name = "mapper-resume" })
 
@@ -441,7 +456,7 @@ end
 rune.alias.regex("^mapper[ ]+bookmark[ ]+goto[ ]+(.+)$", function(m)
     local hits = bookmark_find(m[1])
     if #hits == 0 then
-        rune.echo("[mapper] no bookmark matching '" .. m[1] .. "'")
+        rune.echo(mp("no bookmark matching '" .. m[1] .. "'"))
         return
     end
     if #hits == 1 then
@@ -476,7 +491,7 @@ rune.alias.regex("^mapper[ ]+bookmark[ ]+pick$", function()
         end
     end
     if #items == 0 then
-        rune.echo("[mapper] no bookmarks set.")
+        rune.echo(mp("no bookmarks set."))
         return
     end
     table.sort(items, function(a, b) return a.text < b.text end)
@@ -491,27 +506,30 @@ end, { name = "mapper-bookmark-pick" })
 rune.alias.regex("^mapper[ ]+bookmark[ ]+add[ ]+(.+) at ([0-9A-Fa-f]+)$", function(m)
     local text, id = m[1], m[2]
     if not store.get(id) then
-        rune.echo("[mapper] warning: room " .. id .. " is not in the map")
+        rune.echo(mp("warning: room " .. id .. " is not in the map"))
     end
     store.set_bookmark(id, text)
-    rune.echo("[mapper] bookmark set on " .. id .. ": " .. text)
+    persist()
+        rune.echo(mp("bookmark set on " .. id .. ": " .. text))
 end, { name = "mapper-bookmark-add-at", priority = 40 })
 
 rune.alias.regex("^mapper[ ]+bookmark[ ]+add[ ]+(.+)$", function(m)
     local uid = cur_uid()
     if uid and store.set_bookmark(uid, m[1]) then
-        rune.echo("[mapper] bookmark set on " .. uid .. ": " .. m[1])
+        persist()
+        rune.echo(mp("bookmark set on " .. uid .. ": " .. m[1]))
     else
-        rune.echo("[mapper] I don't know where you are.")
+        rune.echo(mp("I don't know where you are."))
     end
 end, { name = "mapper-bookmark-add" })
 
 rune.alias.regex("^mapper[ ]+bookmark[ ]+del$", function()
     local uid = cur_uid()
     if uid and store.set_bookmark(uid, nil) then
-        rune.echo("[mapper] bookmark cleared on " .. uid)
+        persist()
+        rune.echo(mp("bookmark cleared on " .. uid))
     else
-        rune.echo("[mapper] I don't know where you are.")
+        rune.echo(mp("I don't know where you are."))
     end
 end, { name = "mapper-bookmark-del" })
 
@@ -521,9 +539,10 @@ rune.alias.regex("^mapper[ ]+bookmark[ ]+del[ ]+([0-9A-Fa-f]+)$", function(m)
     local r = store.get(id)
     if r and r.bookmark then
         store.set_bookmark(id, nil)
-        rune.echo("[mapper] bookmark cleared on " .. id)
+        persist()
+        rune.echo(mp("bookmark cleared on " .. id))
     else
-        rune.echo("[mapper] no bookmark on room " .. id)
+        rune.echo(mp("no bookmark on room " .. id))
     end
 end, { name = "mapper-bookmark-del-id", priority = 40 })
 
@@ -531,39 +550,40 @@ end, { name = "mapper-bookmark-del-id", priority = 40 })
 rune.alias.regex("^mapper[ ]+bookmark[ ]+del[ ]+(.+)$", function(m)
     local hits = bookmark_find(m[1])
     if #hits == 0 then
-        rune.echo("[mapper] no bookmark matching '" .. m[1] .. "'")
+        rune.echo(mp("no bookmark matching '" .. m[1] .. "'"))
         return
     end
     if #hits > 1 then
-        rune.echo("[mapper] " .. #hits .. " bookmarks match '" .. m[1] .. "'; be more specific:")
+        rune.echo(mp(#hits .. " bookmarks match '" .. m[1] .. "'; be more specific:"))
         for _, h in ipairs(hits) do
             show_room_line(h.uid, h.room, "[" .. h.room.bookmark .. "]")
         end
         return
     end
     store.set_bookmark(hits[1].uid, nil)
-    rune.echo("[mapper] bookmark cleared on " .. hits[1].uid ..
-        " (" .. hits[1].room.bookmark .. ")")
+    persist()
+    rune.echo(mp("bookmark cleared on " .. hits[1].uid ..
+        " (" .. hits[1].room.bookmark .. ")"))
 end, { name = "mapper-bookmark-del-text", priority = 41 })
 
 rune.alias.regex("^mapper[ ]+depth(|[ ]+([0-9]+|inf|off))$", function(m)
     if m[1] == "" then
         local v = rune.store.get("mapper.scan_depth")
         if v == nil or v == false then
-            rune.echo("[mapper] depth: unlimited")
+            rune.echo(mp("depth: unlimited"))
         else
-            rune.echo("[mapper] depth: " .. tostring(v))
+            rune.echo(mp("depth: " .. tostring(v)))
         end
     elseif m[2] == "inf" or m[2] == "off" then
         rune.store.set("mapper.scan_depth", false)
-        rune.echo("[mapper] depth: unlimited")
+        rune.echo(mp("depth: unlimited"))
     else
         local n = tonumber(m[2])
         if not n or n < 1 then
-            rune.echo("[mapper] depth must be a positive integer or 'inf'")
+            rune.echo(mp("depth must be a positive integer or 'inf'"))
         else
             rune.store.set("mapper.scan_depth", n)
-            rune.echo("[mapper] depth: " .. n)
+            rune.echo(mp("depth: " .. n))
         end
     end
 end, { name = "mapper-depth" })
@@ -579,7 +599,7 @@ rune.alias.regex("^mapper[ ]+sends(|[ ]+(on|off))$", function(m)
         newval = false
     end
     rune.store.set("mapper.enable_speedwalk_sends", newval)
-    rune.echo("[mapper] sends: " .. (newval and "ON (default)" or "OFF (dry-run)"))
+    rune.echo(mp("sends: " .. (newval and "ON (default)" or "OFF (dry-run)")))
 end, { name = "mapper-sends" })
 
 rune.alias.regex("^mapper[ ]+safewalk(|[ ]+(on|off))$", function(m)
@@ -589,7 +609,7 @@ rune.alias.regex("^mapper[ ]+safewalk(|[ ]+(on|off))$", function(m)
     elseif m[1] == "on" then newval = true
     else newval = false end
     rune.store.set("mapper.safewalk", newval)
-    rune.echo("[mapper] safewalk: " .. (newval and "ON" or "OFF"))
+    rune.echo(mp("safewalk: " .. (newval and "ON" or "OFF")))
 end, { name = "mapper-safewalk" })
 
 rune.alias.regex("^mapper[ ]+announce(|[ ]+(on|off))$", function(m)
@@ -599,7 +619,7 @@ rune.alias.regex("^mapper[ ]+announce(|[ ]+(on|off))$", function(m)
     elseif m[1] == "on" then newval = true
     else newval = false end
     rune.store.set("mapper.announce", newval)
-    rune.echo("[mapper] announce room on move: " .. (newval and "ON" or "OFF"))
+    rune.echo(mp("announce room on move: " .. (newval and "ON" or "OFF")))
 end, { name = "mapper-announce" })
 
 rune.alias.regex("^mapper[ ]+map[ ]+wilds(|[ ]+(on|off))$", function(m)
@@ -609,7 +629,7 @@ rune.alias.regex("^mapper[ ]+map[ ]+wilds(|[ ]+(on|off))$", function(m)
     elseif m[1] == "on" then newval = true
     else newval = false end
     rune.store.set("mapper.map_wilds", newval)
-    rune.echo("[mapper] map wilds: " .. (newval and "ON" or "OFF") .. " (not yet enforced)")
+    rune.echo(mp("map wilds: " .. (newval and "ON" or "OFF") .. " (not yet enforced)"))
 end, { name = "mapper-map-wilds" })
 
 rune.alias.regex("^mapper[ ]+dt(|[ ]+([0-9A-Fa-f]+))$", function(m)
@@ -634,31 +654,30 @@ end, { name = "mapper-untag" })
 
 rune.alias.regex("^mapper[ ]+save$", function()
     local ok2, err = store.save()
-    rune.echo("[mapper] save: " .. (ok2 and "ok" or tostring(err)))
+    rune.echo(mp("save: " .. (ok2 and "ok" or tostring(err))))
 end, { name = "mapper-save" })
 
 rune.alias.regex("^mapper[ ]+reload[ -_]db$", function()
     local before = store.count()
     local ok2, msg = store.load()
-    rune.echo(string.format("[mapper] map reload: %s (was %d rooms, now %d)",
-        ok2 and "ok" or "failed", before, store.count()))
+    rune.echo(mp("map reload: " .. (ok2 and "ok" or "failed") .. " (was " .. before .. " rooms, now " .. store.count() .. ")"))
 end, { name = "mapper-reload-db" })
 
 rune.alias.regex("^mapper[ ]+stats$", function()
-    rune.echo("[mapper] " .. store.count() .. " rooms loaded.")
-    rune.echo("[mapper] map dir: " .. store.file)
-    rune.echo("[mapper] sends: " ..
-        ((rune.store.get("mapper.enable_speedwalk_sends") == false) and "OFF (dry-run)" or "ON"))
-    rune.echo("[mapper] safewalk: " .. ((rune.store.get("mapper.safewalk") == true) and "ON" or "OFF"))
+    rune.echo(mp(store.count() .. " rooms loaded."))
+    rune.echo(mp("map dir: " .. store.file))
+    rune.echo(mp("sends: " ..
+        ((rune.store.get("mapper.enable_speedwalk_sends") == false) and "OFF (dry-run)" or "ON")))
+    rune.echo(mp("safewalk: " .. ((rune.store.get("mapper.safewalk") == true) and "ON" or "OFF")))
     local depth = rune.store.get("mapper.scan_depth")
     if depth == nil or depth == false then
-        rune.echo("[mapper] scan depth: unlimited")
+        rune.echo(mp("scan depth: unlimited"))
     else
-        rune.echo("[mapper] scan depth: " .. tostring(depth))
+        rune.echo(mp("scan depth: " .. tostring(depth)))
     end
     if store.position then
-        rune.echo("[mapper] position: " .. store.position.uid ..
-            " @ " .. tostring(store.position.area))
+        rune.echo(mp("position: " .. store.position.uid ..
+            " @ " .. tostring(store.position.area)))
     end
 end, { name = "mapper-stats" })
 
@@ -688,6 +707,10 @@ local function mapper_help()
     rune.echo(H.section("Nearby by tag/flag:"))
     rune.echo(H.line("mapper safes / cpks / dts / shops / trainers", ""))
     rune.echo(H.line("mapper flags <pat> / notflags <pat>", ""))
+    rune.echo(H.section("Map pane:"))
+    rune.echo(H.line("mapper map", "redraw and report"))
+    rune.echo(H.line("mapper map show | hide | refresh", ""))
+    rune.echo(H.line("ctrl+alt+m", "toggle the map pane"))
     rune.echo(H.section("Settings:"))
     rune.echo(H.line("mapper sends [on|off]", "dry-run toggle (default ON)"))
     rune.echo(H.line("mapper depth [N|inf]", "BFS cap (default unlimited)"))

@@ -142,19 +142,59 @@ function M.load()
 end
 
 function M.save()
+    -- Saving rewrites the whole file from this process's memory, so anything
+    -- the other client wrote since we loaded would be dropped. Read it once up
+    -- front: tags and bookmarks get merged, and rooms we have never seen are
+    -- carried over untouched. (Both clients load the file at startup, so in
+    -- practice only edits made since then are at risk.)
+    local disk_tags, disk_marks, untouched = {}, {}, {}
+    local f = io.open(M.file, "r")
+    if f then
+        local body = f:read("*a")
+        f:close()
+        for line in body:gmatch("[^\n]+") do
+            local parts = split(line, US)
+            local uid = parts[1]
+            if uid and uid ~= "" then
+                untouched[uid] = line
+                if parts[9] and parts[9] ~= "" then
+                    local set = {}
+                    for t in parts[9]:gmatch("[^" .. GS .. "]+") do set[t] = true end
+                    disk_tags[uid] = set
+                end
+                if parts[10] and parts[10] ~= "" then disk_marks[uid] = parts[10] end
+            end
+        end
+    end
+
     local lines = {}
-    for _, r in pairs(M.rooms) do
+    for uid, r in pairs(M.rooms) do
+        local dt = disk_tags[uid]
+        if dt then
+            if type(r.tags) ~= "table" then r.tags = {} end
+            local have = {}
+            for _, t in ipairs(r.tags) do have[t] = true end
+            for t in pairs(dt) do
+                if not have[t] then r.tags[#r.tags + 1] = t end
+            end
+        end
+        if (r.bookmark == nil or r.bookmark == "") and disk_marks[uid] then
+            r.bookmark = disk_marks[uid]
+        end
+        untouched[uid] = nil
         lines[#lines + 1] = encode_room(r)
     end
+    for _, line in pairs(untouched) do lines[#lines + 1] = line end
+
     local text = table.concat(lines, "\n")
-    local f = io.open(M.file, "w")
-    if not f then
+    local out = io.open(M.file, "w")
+    if not out then
         ensure_parent_dir(M.file)
-        f = io.open(M.file, "w")
+        out = io.open(M.file, "w")
     end
-    if not f then return false, "cannot write " .. M.file end
-    f:write(text)
-    f:close()
+    if not out then return false, "cannot write " .. M.file end
+    out:write(text)
+    out:close()
     M.dirty = false
     return true
 end
